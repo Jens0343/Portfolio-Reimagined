@@ -15,12 +15,20 @@ const projectImage = document.querySelector('.project-visual img');
 const revealTargets = [...document.querySelectorAll('.section h2, .project-info, .project-visual, .project-list details, .about-body, .toolkit article, .timeline article, .intro, .contact-bottom')];
 const navigation = [...document.querySelectorAll('nav a')];
 const sections = ['work', 'about', 'contact'].map(id => document.getElementById(id));
+const story = document.querySelector('.scroll-story');
+const storyPanels = [...document.querySelectorAll('.story-panel')];
+const storyTrack = document.querySelector('.story-track span');
+const work = document.querySelector('.work');
+const heroHeadline = document.querySelector('.hero h1');
+const finePointer = matchMedia('(hover: hover) and (pointer: fine)');
+const clamp = (value, min = 0, max = 1) => Math.min(max, Math.max(min, value));
 let revealObserver;
 function configureMotion() {
   revealObserver?.disconnect();
   revealTargets.forEach(element => element.classList.remove('reveal-pending'));
   portrait.style.removeProperty('translate');
   projectImage.style.removeProperty('translate');
+  document.documentElement.classList.toggle('motion-enabled', !motionPreference.matches);
   if (!motionPreference.matches && 'IntersectionObserver' in window) {
     revealObserver = new IntersectionObserver(entries => {
       entries.forEach(entry => {
@@ -44,6 +52,7 @@ function paintScroll() {
   scrollFrame = 0;
   const distance = document.documentElement.scrollHeight - innerHeight;
   progress.style.transform = `scaleX(${distance > 0 ? Math.min(1, Math.max(0, scrollY / distance)) : 0})`;
+  paintStory();
   if (!motionPreference.matches && innerWidth > 600) {
     portrait.style.translate = `0 ${Math.min(scrollY * 0.075, 35)}px`;
     const rect = projectImage.parentElement.getBoundingClientRect();
@@ -69,3 +78,66 @@ addEventListener('load', requestScrollFrame);
 document.addEventListener('focusin', event => event.target.closest('.reveal-pending')?.classList.remove('reveal-pending'));
 motionPreference.addEventListener('change', configureMotion);
 configureMotion();
+
+function paintStory() {
+  if (motionPreference.matches) {
+    storyPanels.forEach(panel => panel.removeAttribute('inert'));
+    heroHeadline.style.removeProperty('translate');
+    portrait.style.removeProperty('transform');
+    return;
+  }
+  const box = story.getBoundingClientRect();
+  const travel = Math.max(1, story.offsetHeight - innerHeight);
+  const position = clamp(-box.top / travel);
+  // Two full-screen circular wipes are tied directly to scroll position.
+  const second = clamp((position - 0.12) / 0.30);
+  const third = clamp((position - 0.57) / 0.30);
+  story.style.setProperty('--wipe-data', `${second * 150}%`);
+  story.style.setProperty('--wipe-systems', `${third * 150}%`);
+  storyTrack.style.transform = `scaleX(${position})`;
+  const active = third >= 0.5 ? 2 : second >= 0.5 ? 1 : 0;
+  storyPanels.forEach((panel, index) => {
+    panel.toggleAttribute('inert', index !== active);
+    const heading = panel.querySelector('h2');
+    const local = index === 0 ? position : index === 1 ? second : third;
+    heading.style.transform = `translate3d(0, ${(1 - local) * (index ? 55 : -15)}px, 0)`;
+  });
+  const heroProgress = clamp(scrollY / Math.max(innerHeight, 1));
+  heroHeadline.style.translate = `${-heroProgress * (innerWidth > 600 ? 42 : 12)}px 0`;
+  portrait.style.transform = `rotate(${5 - heroProgress * 9}deg)`;
+  const workBox = work.getBoundingClientRect();
+  const workProgress = clamp((innerHeight - workBox.top) / (innerHeight + workBox.height));
+  work.style.setProperty('--work-hue', `${72 + workProgress * 105}`);
+}
+
+const projectRows = [...document.querySelectorAll('.project-list details')];
+projectRows.forEach((row, index) => {
+  const palettes = ['#dceadd', '#e3dff0', '#f0e1ce'];
+  const activate = () => work.style.setProperty('--work-interaction', palettes[index]);
+  const deactivate = () => {
+    const openRow = projectRows.find(item => item.open);
+    if (openRow) work.style.setProperty('--work-interaction', palettes[projectRows.indexOf(openRow)]);
+    else work.style.removeProperty('--work-interaction');
+  };
+  row.addEventListener('pointerenter', () => { if (finePointer.matches) activate(); });
+  row.addEventListener('pointerleave', deactivate);
+  row.addEventListener('focusin', activate);
+  row.addEventListener('focusout', deactivate);
+  row.addEventListener('toggle', () => { deactivate(); requestScrollFrame(); });
+});
+
+// Pointer interaction is optional; keyboard and touch keep native navigation.
+document.querySelectorAll('.portrait, .project-visual').forEach(card => {
+  card.addEventListener('pointermove', event => {
+    if (motionPreference.matches || !finePointer.matches) return;
+    const box = card.getBoundingClientRect();
+    const x = clamp((event.clientX - box.left) / box.width) - 0.5;
+    const y = clamp((event.clientY - box.top) / box.height) - 0.5;
+    card.style.setProperty('--tilt-x', `${-y * 7}deg`);
+    card.style.setProperty('--tilt-y', `${x * 7}deg`);
+  }, { passive: true });
+  card.addEventListener('pointerleave', () => {
+    card.style.setProperty('--tilt-x', '0deg');
+    card.style.setProperty('--tilt-y', '0deg');
+  });
+});
